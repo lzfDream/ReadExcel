@@ -1,4 +1,4 @@
-module table
+module github.com/lzfDream/ReadExcel
 
 go 1.20
 

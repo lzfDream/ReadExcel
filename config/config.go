@@ -5,9 +5,18 @@ import (
 	"io/ioutil"
 )
 
+const (
+	OutputFileType_Json = "json"
+)
+
+type groupConfig struct {
+	OutputPath     string `json:"output_path,omitempty"`
+	OutputFileType string `json:"output_file_type,omitempty"`
+}
+
 type config struct {
-	InputPath  string `json:"input_path"`
-	OutputPath string `json:"output_path"`
+	InputPath string      `json:"input_path,omitempty"`
+	Client    groupConfig `json:"client,omitempty"`
 }
 
 var cfg config
@@ -21,6 +30,9 @@ func init() {
 	err = json.Unmarshal(bytes, &cfg)
 	if err != nil {
 		panic("config.json Unmarshal fail, err: " + err.Error())
+	}
+	if cfg.Client.OutputFileType == "" {
+		cfg.Client.OutputFileType = OutputFileType_Json
 	}
 }
 
