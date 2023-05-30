@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/lzfDream/ReadExcel/config"
@@ -52,49 +51,40 @@ func main() {
 				fmt.Println(err)
 				return
 			}
-			fmt.Printf("%+v\n", define)
 
 			rowData := []string{}
-			for _, row := range rows[5:] {
-				// 空行停止
-				if len(row) == 0 {
-					break
-				}
-				// 注释行
-				if strings.HasPrefix(row[0], "##") {
-					continue
-				}
-				colData := []string{}
-				for index, cell := range row[1:] {
-					fieldDefine := define.Fields[index]
-					if fieldDefine.Type == "bool" {
-						b, err := strconv.ParseBool(cell)
-						if err != nil {
-							fmt.Println(err)
-							return
-						}
-						if b {
-							colData = append(colData, `"`+fieldDefine.Name+`":true`)
-						} else {
-							colData = append(colData, `"`+fieldDefine.Name+`":false`)
-						}
-					} else if fieldDefine.Type == "int" {
-						num, err := strconv.Atoi(cell)
-						if err != nil {
-							fmt.Println(err)
-							return
-						}
-						colData = append(colData, `"`+fieldDefine.Name+`":`+strconv.Itoa(num))
-					} else if fieldDefine.Type == "double" {
-						num, err := strconv.ParseFloat(cell, 64)
-						if err != nil {
-							fmt.Println(err)
-							return
-						}
-						colData = append(colData, `"`+fieldDefine.Name+`":`+strconv.FormatFloat(num, 'f', -1, 64))
-					} else if fieldDefine.Type == "string" {
-						colData = append(colData, `"`+fieldDefine.Name+`":"`+cell+`"`)
+			if define.SheetFileType == parse.SheetFileType_Horizontal {
+				for _, row := range rows[5:] {
+					// 空行停止
+					if len(row) == 0 {
+						break
 					}
+					// 注释行
+					if strings.HasPrefix(row[0], "##") {
+						continue
+					}
+					colData := []string{}
+					for index, cell := range row[1:] {
+						fieldDefine := define.Fields[index]
+						value, err := parse.ParseCellValue(fieldDefine, cell)
+						if err != nil {
+							fmt.Println(err)
+							return
+						}
+						colData = append(colData, value)
+					}
+					rowData = append(rowData, "{"+strings.Join(colData, ",")+"}")
+				}
+			} else if define.SheetFileType == parse.SheetFileType_Vertical {
+				colData := []string{}
+				for index, row := range rows[3:] {
+					fieldDefine := define.Fields[index]
+					value, err := parse.ParseCellValue(fieldDefine, row[4])
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					colData = append(colData, value)
 				}
 				rowData = append(rowData, "{"+strings.Join(colData, ",")+"}")
 			}
@@ -107,6 +97,5 @@ func main() {
 				return
 			}
 		}
-		break
 	}
 }
