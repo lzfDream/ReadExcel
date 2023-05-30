@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/lzfDream/ReadExcel/config"
 	"github.com/lzfDream/ReadExcel/parse"
@@ -26,7 +27,11 @@ func main() {
 		if entry.IsDir() {
 			continue
 		}
-		f, err := excelize.OpenFile(cfg.InputPath + "/" + entry.Name())
+		fileName := entry.Name()
+		fmt.Println("开始读取文件: ", fileName)
+		startTime := time.Now()
+
+		f, err := excelize.OpenFile(cfg.InputPath + "/" + fileName)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -45,8 +50,9 @@ func main() {
 				fmt.Println(err)
 				return
 			}
+			fmt.Printf("开始解析 %s:%s\n", fileName, sheetName)
 			define := parse.ExcelDefine{}
-			err = define.Parse(entry.Name(), sheetName, rows)
+			err = define.Parse(fileName, sheetName, rows)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -97,5 +103,7 @@ func main() {
 				return
 			}
 		}
+		elapsed := time.Since(startTime)
+		fmt.Printf("读取%s完成, 耗时%s\n\n", fileName, elapsed)
 	}
 }
