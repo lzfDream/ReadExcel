@@ -58,7 +58,7 @@ func main() {
 				return
 			}
 
-			rowData := []string{}
+			clientRowData := []string{}
 			if define.SheetFileType == parse.SheetFileType_Horizontal {
 				for _, row := range rows[5:] {
 					// 空行停止
@@ -69,7 +69,7 @@ func main() {
 					if strings.HasPrefix(row[0], "##") {
 						continue
 					}
-					colData := []string{}
+					clientColData := []string{}
 					for index, cell := range row[1:] {
 						fieldDefine := define.Fields[index]
 						value, err := parse.ParseCellValue(fieldDefine, cell)
@@ -77,12 +77,16 @@ func main() {
 							fmt.Println(err)
 							return
 						}
-						colData = append(colData, value)
+						if fieldDefine.Group.HasGroup(parse.GroupType_Client) {
+							clientColData = append(clientColData, value)
+						}
 					}
-					rowData = append(rowData, "{"+strings.Join(colData, ",")+"}")
+					if len(clientColData) != 0 {
+						clientRowData = append(clientRowData, "{"+strings.Join(clientColData, ",")+"}")
+					}
 				}
 			} else if define.SheetFileType == parse.SheetFileType_Vertical {
-				colData := []string{}
+				clientColData := []string{}
 				for index, row := range rows[3:] {
 					fieldDefine := define.Fields[index]
 					value, err := parse.ParseCellValue(fieldDefine, row[4])
@@ -90,17 +94,26 @@ func main() {
 						fmt.Println(err)
 						return
 					}
-					colData = append(colData, value)
+					if fieldDefine.Group.HasGroup(parse.GroupType_Client) {
+						clientColData = append(clientColData, value)
+					}
 				}
-				rowData = append(rowData, "{"+strings.Join(colData, ",")+"}")
+				if len(clientColData) != 0 {
+					clientRowData = append(clientRowData, "{"+strings.Join(clientColData, ",")+"}")
+				}
 			}
-			str := "[" + strings.Join(rowData, ",") + "]"
-			var out bytes.Buffer
-			json.Indent(&out, []byte(str), "", "    ")
-			err = ioutil.WriteFile(cfg.Client.OutputPath+"/"+define.OutFileName+".json", out.Bytes(), 0644)
-			if err != nil {
-				fmt.Println("写入文件失败：", err)
-				return
+			clientStr := ""
+			if len(clientRowData) != 0 {
+				clientStr = "[" + strings.Join(clientRowData, ",") + "]"
+			}
+			if cfg.Client.OutputFileType == config.OutputFileType_Json {
+				var out bytes.Buffer
+				json.Indent(&out, []byte(clientStr), "", "    ")
+				err = ioutil.WriteFile(cfg.Client.OutputPath+"/"+define.OutFileName+".json", out.Bytes(), 0644)
+				if err != nil {
+					fmt.Println("写入文件失败：", err)
+					return
+				}
 			}
 		}
 		elapsed := time.Since(startTime)

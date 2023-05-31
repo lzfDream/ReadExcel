@@ -3,11 +3,20 @@ package parse
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 const (
 	SheetFileType_Vertical = iota
 	SheetFileType_Horizontal
+)
+
+type GroupType int
+
+const (
+	GroupType_Client GroupType = 1 << iota
+	GroupType_Server
+	GroupType_All
 )
 
 func getRowIndexByValue(row []string, value string) int {
@@ -103,10 +112,32 @@ func ParseCellValue(fieldDefine ExcelDefineField, cell string) (string, error) {
 	return "", fmt.Errorf("invalid field type %s", fieldDefine.Type)
 }
 
+func (g *GroupType) Parse(str string) {
+	if len(str) == 0 {
+		*g = GroupType_All
+		return
+	}
+	groups := strings.Split(str, ",")
+	for _, group := range groups {
+		if group == "c" {
+			*g |= GroupType_Client
+		} else if group == "s" {
+			*g |= GroupType_Server
+		}
+	}
+}
+
+func (g GroupType) HasGroup(group GroupType) bool {
+	if g == GroupType_All {
+		return true
+	}
+	return g&group == group
+}
+
 type ExcelDefineField struct {
 	Name  string
 	Type  string
-	Group string
+	Group GroupType
 }
 
 type ExcelDefine struct {
@@ -169,10 +200,10 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 				return fmt.Errorf("%s, rows line 3 size < line 2 size", e.Desc())
 			}
 			field.Type = rows[3][i]
-			if i < len(rows[4]) && rows[4][i] != "" {
-				field.Group = rows[4][i]
+			if i < len(rows[4]) {
+				field.Group.Parse(rows[4][i])
 			} else {
-				field.Group = "c,s"
+				field.Group = GroupType_All
 			}
 
 			e.Fields = append(e.Fields, field)
@@ -185,10 +216,10 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 			field := ExcelDefineField{}
 			field.Name = row[1]
 			field.Type = row[2]
-			if len(row) >= 3 && row[3] != "" {
-				field.Group = row[3]
+			if len(row) >= 3 {
+				field.Group.Parse(row[3])
 			} else {
-				field.Group = "c,s"
+				field.Group = GroupType_All
 			}
 			e.Fields = append(e.Fields, field)
 		}

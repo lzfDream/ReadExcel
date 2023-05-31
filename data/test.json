@@ -1,7 +1,6 @@
 [
     {
         "test1": 1,
-        "test2": "xxx",
         "test3": 111.22,
         "test4": false
     }
