@@ -28,6 +28,9 @@ func getRowValueByIndex(row []string, index int) string {
 
 func ParseCellValue(fieldDefine ExcelDefineField, cell string) (string, error) {
 	if fieldDefine.Type == "bool" {
+		if cell == "" {
+			return "", fmt.Errorf("cell is empty")
+		}
 		b, err := strconv.ParseBool(cell)
 		if err != nil {
 			return "", err
@@ -38,18 +41,63 @@ func ParseCellValue(fieldDefine ExcelDefineField, cell string) (string, error) {
 			return `"` + fieldDefine.Name + `":false`, nil
 		}
 	} else if fieldDefine.Type == "int" {
+		if cell == "" {
+			return "", fmt.Errorf("cell is empty")
+		}
 		num, err := strconv.Atoi(cell)
 		if err != nil {
 			return "", err
 		}
 		return `"` + fieldDefine.Name + `":` + strconv.Itoa(num), nil
 	} else if fieldDefine.Type == "double" {
+		if cell == "" {
+			return "", fmt.Errorf("cell is empty")
+		}
 		num, err := strconv.ParseFloat(cell, 64)
 		if err != nil {
 			return "", err
 		}
 		return `"` + fieldDefine.Name + `":` + strconv.FormatFloat(num, 'f', -1, 64), nil
 	} else if fieldDefine.Type == "string" {
+		if cell == "" {
+			return "", fmt.Errorf("cell is empty")
+		}
+		return `"` + fieldDefine.Name + `":"` + cell + `"`, nil
+	} else if fieldDefine.Type == "bool?" {
+		if cell == "" {
+			return `"` + fieldDefine.Name + `":false`, nil
+		}
+		b, err := strconv.ParseBool(cell)
+		if err != nil {
+			return "", err
+		}
+		if b {
+			return `"` + fieldDefine.Name + `":true`, nil
+		} else {
+			return `"` + fieldDefine.Name + `":false`, nil
+		}
+	} else if fieldDefine.Type == "int?" {
+		if cell == "" {
+			return `"` + fieldDefine.Name + `": 0`, nil
+		}
+		num, err := strconv.Atoi(cell)
+		if err != nil {
+			return "", err
+		}
+		return `"` + fieldDefine.Name + `":` + strconv.Itoa(num), nil
+	} else if fieldDefine.Type == "double?" {
+		if cell == "" {
+			return `"` + fieldDefine.Name + `": 0.0`, nil
+		}
+		num, err := strconv.ParseFloat(cell, 64)
+		if err != nil {
+			return "", err
+		}
+		return `"` + fieldDefine.Name + `":` + strconv.FormatFloat(num, 'f', -1, 64), nil
+	} else if fieldDefine.Type == "string?" {
+		if cell == "" {
+			return `"` + fieldDefine.Name + `":""`, nil
+		}
 		return `"` + fieldDefine.Name + `":"` + cell + `"`, nil
 	}
 	return "", fmt.Errorf("invalid field type %s", fieldDefine.Type)
