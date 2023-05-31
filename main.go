@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -16,6 +17,7 @@ import (
 )
 
 func main() {
+	begin := time.Now()
 	cfg := config.GetConfig()
 
 	entries, err := os.ReadDir(cfg.InputPath)
@@ -23,6 +25,7 @@ func main() {
 		fmt.Println("读取目录失败：", err)
 		return
 	}
+	defines := make([]parse.ExcelDefine, 0)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -57,6 +60,7 @@ func main() {
 				fmt.Println(err)
 				return
 			}
+			defines = append(defines, define)
 
 			clientRowData := []string{}
 			if define.SheetFileType == parse.SheetFileType_Horizontal {
@@ -86,7 +90,6 @@ func main() {
 					}
 				}
 			} else if define.SheetFileType == parse.SheetFileType_Vertical {
-				clientColData := []string{}
 				for index, row := range rows[3:] {
 					fieldDefine := define.Fields[index]
 					value, err := parse.ParseCellValue(fieldDefine, row[4])
@@ -95,28 +98,162 @@ func main() {
 						return
 					}
 					if fieldDefine.Group.HasGroup(parse.GroupType_Client) {
-						clientColData = append(clientColData, value)
+						clientRowData = append(clientRowData, value)
 					}
-				}
-				if len(clientColData) != 0 {
-					clientRowData = append(clientRowData, "{"+strings.Join(clientColData, ",")+"}")
 				}
 			}
 			clientStr := ""
 			if len(clientRowData) != 0 {
-				clientStr = "[" + strings.Join(clientRowData, ",") + "]"
+				if define.SheetFileType == parse.SheetFileType_Horizontal {
+					clientStr = "[" + strings.Join(clientRowData, ",") + "]"
+				} else if define.SheetFileType == parse.SheetFileType_Vertical {
+					clientStr = "{" + strings.Join(clientRowData, ",") + "}"
+				}
 			}
-			if cfg.Client.OutputFileType == config.OutputFileType_Json {
-				var out bytes.Buffer
-				json.Indent(&out, []byte(clientStr), "", "    ")
-				err = ioutil.WriteFile(cfg.Client.OutputPath+"/"+define.OutFileName+".json", out.Bytes(), 0644)
-				if err != nil {
-					fmt.Println("写入文件失败：", err)
-					return
+			if clientStr == "" {
+				fmt.Printf("%s:%s client 数据为空, 被跳过\n", fileName, sheetName)
+			} else {
+				if cfg.Client.OutputFileType == config.OutputFileType_Json {
+					err = OutputJson(cfg.Client.OutputPath+"/"+define.OutFileName, clientStr+"\n")
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
 				}
 			}
 		}
 		elapsed := time.Since(startTime)
 		fmt.Printf("读取%s完成, 耗时%s\n\n", fileName, elapsed)
 	}
+	OutputCSharp(defines)
+	elapsed := time.Since(begin)
+	fmt.Printf("总耗时%s\n", elapsed)
+}
+
+func OutputJson(fileName, str string) error {
+	var out bytes.Buffer
+	json.Indent(&out, []byte(str), "", "    ")
+	err := ioutil.WriteFile(fileName+".json", out.Bytes(), 0644)
+	if err != nil {
+		return fmt.Errorf("写入文件%s失败: %w", fileName, err)
+	}
+
+	return nil
+}
+
+func FixCSharpType(strType string) string {
+	switch strType {
+	case "string", "bool", "int", "double":
+		return strType
+	case "string?", "bool?", "int?", "double?":
+		return strings.TrimSuffix(strType, "?")
+	}
+	return ""
+}
+
+const TableText = `// 生成
+using System;
+using System.Collections;
+using System.Collections.Generic;
+
+struct {{.ClassName}}
+{
+    {{- range _, $field := .}}
+    public {{$field.Type}} {{$field.Name}};
+    {{- end}}
+}
+`
+
+func OutputCSharpCode(path string, define parse.ExcelDefine) error {
+	lines := make([]string, 0, 10)
+	if define.SheetFileType == parse.SheetFileType_Vertical {
+		text, err := template.New("test").Parse(TableText)
+		if err != nil {
+			return nil
+		}
+
+		var buf strings.Builder
+		err = text.Execute(&buf, define.Fields)
+		if err != nil {
+			return nil
+		}
+		lines = append(lines, buf.String())
+	}
+	str := strings.Join(lines, "\n")
+	filePath := path + define.OutFileName + ".cs"
+	err := ioutil.WriteFile(filePath, []byte(str), 0644)
+	if err != nil {
+		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
+	}
+
+	return nil
+}
+
+const TableMgrText = `// 生成
+using Table;
+using System.Collections.Generic;
+
+interface ITableModule {
+    void load();
+}
+
+public class TableMgr {
+    private List<ITableModule> tables;
+    private static TableMgr instance;
+
+    private TableMgr() {
+        {{- range $index, $ClassName := .}}
+        tables.Add(new {{$ClassName}}())
+        {{- end}}
+    }
+
+    public static TableMgr Instance() {
+        if (instance == null) {
+            instance = new TableMgr();
+        }
+        return instance;
+    }
+
+    public void load() {
+        foreach(ITableModule table in tables) {
+            table.load();
+        }
+    }
+}
+`
+
+func OutputCSharp(defines []parse.ExcelDefine) error {
+	// 生成每一个sheet的类
+	for _, define := range defines {
+		err := OutputCSharpCode("code/", define)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 生成全局管理类
+	text, err := template.New("test").Parse(TableMgrText)
+	if err != nil {
+		return nil
+	}
+
+	classNames := make([]string, 0)
+	for _, define := range defines {
+		classNames = append(classNames, define.OutFileName)
+	}
+	var buf strings.Builder
+	err = text.Execute(&buf, classNames)
+	if err != nil {
+		return nil
+	}
+
+	lines := make([]string, 0)
+	lines = append(lines, buf.String())
+	str := strings.Join(lines, "\n")
+	filePath := "code/TableMgr.cs"
+	err = ioutil.WriteFile(filePath, []byte(str), 0644)
+	if err != nil {
+		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
+	}
+	return nil
 }

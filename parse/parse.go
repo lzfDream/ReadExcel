@@ -109,7 +109,7 @@ func ParseCellValue(fieldDefine ExcelDefineField, cell string) (string, error) {
 		}
 		return `"` + fieldDefine.Name + `":"` + cell + `"`, nil
 	}
-	return "", fmt.Errorf("invalid field type %s", fieldDefine.Type)
+	panic(fmt.Errorf("invalid field type %s", fieldDefine.Type))
 }
 
 func (g *GroupType) Parse(str string) {
@@ -150,6 +150,22 @@ type ExcelDefine struct {
 
 func (e ExcelDefine) Desc() string {
 	return e.FileName + ":" + e.SheetName
+}
+
+var ValidType = map[string]struct{}{
+	"bool":   {},
+	"int":    {},
+	"double": {},
+	"string": {},
+}
+
+func init() {
+	newValidType := make(map[string]struct{}, 2*len(ValidType))
+	for strType := range ValidType {
+		newValidType[strType] = struct{}{}
+		newValidType[strType+"?"] = struct{}{}
+	}
+	ValidType = newValidType
 }
 
 func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
@@ -222,6 +238,18 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 				field.Group = GroupType_All
 			}
 			e.Fields = append(e.Fields, field)
+		}
+	}
+
+	for index, field := range e.Fields {
+		if field.Name == "" {
+			return fmt.Errorf("%s, field %d name is empty", e.Desc(), index)
+		}
+		if field.Type == "" {
+			return fmt.Errorf("%s, field %d type is empty", e.Desc(), index)
+		}
+		if _, ok := ValidType[field.Type]; !ok {
+			return fmt.Errorf("%s, field %d invalid type", e.Desc(), index)
 		}
 	}
 

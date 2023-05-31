@@ -1,7 +1,5 @@
-[
-    {
-        "test1": 1,
-        "test3": 111.22,
-        "test4": false
-    }
-]
+{
+    "test1": 1,
+    "test3": 111.22,
+    "test4": false
+}

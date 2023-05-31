@@ -3,6 +3,7 @@
     "editor.formatOnSave": true,
     "editor.formatOnSaveMode": "file",
     "cSpell.words": [
-        "excelize"
+        "excelize",
+        "xuri"
     ]
 }
