@@ -35,79 +35,45 @@ func getRowValueByIndex(row []string, index int) string {
 	return row[index]
 }
 
-func ParseCellValue(fieldDefine ExcelDefineField, cell string) (string, error) {
-	if fieldDefine.Type == "bool" {
+func ParseCellValue(fieldDefine ExcelDefineField, cell string) (interface{}, error) {
+	if !strings.HasSuffix(fieldDefine.Type, "?") {
 		if cell == "" {
-			return "", fmt.Errorf("cell is empty")
+			return nil, fmt.Errorf("cell is empty")
 		}
+	}
+
+	if cell == "" {
+		var defVal interface{} = ""
+		if fieldDefine.Type == "bool?" {
+			defVal = false
+		} else if fieldDefine.Type == "int?" {
+			defVal = 0
+		} else if fieldDefine.Type == "double?" {
+			defVal = 0.0
+		}
+		return defVal, nil
+	}
+
+	if fieldDefine.Type == "bool" || fieldDefine.Type == "bool?" {
 		b, err := strconv.ParseBool(cell)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		if b {
-			return `"` + fieldDefine.Name + `":true`, nil
-		} else {
-			return `"` + fieldDefine.Name + `":false`, nil
-		}
-	} else if fieldDefine.Type == "int" {
-		if cell == "" {
-			return "", fmt.Errorf("cell is empty")
-		}
+		return b, nil
+	} else if fieldDefine.Type == "int" || fieldDefine.Type == "int?" {
 		num, err := strconv.Atoi(cell)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		return `"` + fieldDefine.Name + `":` + strconv.Itoa(num), nil
-	} else if fieldDefine.Type == "double" {
-		if cell == "" {
-			return "", fmt.Errorf("cell is empty")
-		}
+		return num, nil
+	} else if fieldDefine.Type == "double" || fieldDefine.Type == "double?" {
 		num, err := strconv.ParseFloat(cell, 64)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		return `"` + fieldDefine.Name + `":` + strconv.FormatFloat(num, 'f', -1, 64), nil
-	} else if fieldDefine.Type == "string" {
-		if cell == "" {
-			return "", fmt.Errorf("cell is empty")
-		}
-		return `"` + fieldDefine.Name + `":"` + cell + `"`, nil
-	} else if fieldDefine.Type == "bool?" {
-		if cell == "" {
-			return `"` + fieldDefine.Name + `":false`, nil
-		}
-		b, err := strconv.ParseBool(cell)
-		if err != nil {
-			return "", err
-		}
-		if b {
-			return `"` + fieldDefine.Name + `":true`, nil
-		} else {
-			return `"` + fieldDefine.Name + `":false`, nil
-		}
-	} else if fieldDefine.Type == "int?" {
-		if cell == "" {
-			return `"` + fieldDefine.Name + `": 0`, nil
-		}
-		num, err := strconv.Atoi(cell)
-		if err != nil {
-			return "", err
-		}
-		return `"` + fieldDefine.Name + `":` + strconv.Itoa(num), nil
-	} else if fieldDefine.Type == "double?" {
-		if cell == "" {
-			return `"` + fieldDefine.Name + `": 0.0`, nil
-		}
-		num, err := strconv.ParseFloat(cell, 64)
-		if err != nil {
-			return "", err
-		}
-		return `"` + fieldDefine.Name + `":` + strconv.FormatFloat(num, 'f', -1, 64), nil
-	} else if fieldDefine.Type == "string?" {
-		if cell == "" {
-			return `"` + fieldDefine.Name + `":""`, nil
-		}
-		return `"` + fieldDefine.Name + `":"` + cell + `"`, nil
+		return num, nil
+	} else if fieldDefine.Type == "string" || fieldDefine.Type == "string?" {
+		return cell, nil
 	}
 	panic(fmt.Errorf("invalid field type %s", fieldDefine.Type))
 }
@@ -146,6 +112,7 @@ type ExcelDefine struct {
 	OutFileName   string
 	SheetFileType int
 	Fields        []ExcelDefineField
+	KeyNum        int
 }
 
 func (e ExcelDefine) Desc() string {
@@ -171,6 +138,7 @@ func init() {
 func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 	e.FileName = fileName
 	e.SheetName = sheetName
+	e.KeyNum = 1
 
 	if len(rows) < 2 {
 		return fmt.Errorf("%s, rows < 2", e.Desc())
@@ -192,6 +160,15 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 			return fmt.Errorf("%s, SheetFileType not int, err %w", e.Desc(), err)
 		}
 		e.SheetFileType = num
+	}
+
+	index = getRowIndexByValue(rows[0], "KeyNum")
+	if index != -1 {
+		num, err := strconv.Atoi(getRowValueByIndex(rows[1], index))
+		if err != nil {
+			return fmt.Errorf("%s, KeyNum not int, err %w", e.Desc(), err)
+		}
+		e.KeyNum = num
 	}
 
 	if e.SheetFileType == SheetFileType_Horizontal {

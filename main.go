@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -62,9 +61,10 @@ func main() {
 			}
 			defines = append(defines, define)
 
-			clientRowData := []string{}
+			clientData := map[string]interface{}{}
 			if define.SheetFileType == parse.SheetFileType_Horizontal {
 				for _, row := range rows[5:] {
+					data := clientData
 					// 空行停止
 					if len(row) == 0 {
 						break
@@ -73,7 +73,7 @@ func main() {
 					if strings.HasPrefix(row[0], "##") {
 						continue
 					}
-					clientColData := []string{}
+					colData := map[string]interface{}{}
 					for index, cell := range row[1:] {
 						fieldDefine := define.Fields[index]
 						value, err := parse.ParseCellValue(fieldDefine, cell)
@@ -81,12 +81,17 @@ func main() {
 							fmt.Println(err)
 							return
 						}
+						if index < define.KeyNum {
+							key := cell
+							data[key] = map[string]interface{}{}
+							data = data[key].(map[string]interface{})
+						}
 						if fieldDefine.Group.HasGroup(parse.GroupType_Client) {
-							clientColData = append(clientColData, value)
+							colData[fieldDefine.Name] = value
 						}
 					}
-					if len(clientColData) != 0 {
-						clientRowData = append(clientRowData, "{"+strings.Join(clientColData, ",")+"}")
+					for k, v := range colData {
+						data[k] = v
 					}
 				}
 			} else if define.SheetFileType == parse.SheetFileType_Vertical {
@@ -98,23 +103,15 @@ func main() {
 						return
 					}
 					if fieldDefine.Group.HasGroup(parse.GroupType_Client) {
-						clientRowData = append(clientRowData, value)
+						clientData[fieldDefine.Name] = value
 					}
 				}
 			}
-			clientStr := ""
-			if len(clientRowData) != 0 {
-				if define.SheetFileType == parse.SheetFileType_Horizontal {
-					clientStr = "[" + strings.Join(clientRowData, ",") + "]"
-				} else if define.SheetFileType == parse.SheetFileType_Vertical {
-					clientStr = "{" + strings.Join(clientRowData, ",") + "}"
-				}
-			}
-			if clientStr == "" {
+			if len(clientData) == 0 {
 				fmt.Printf("%s:%s client 数据为空, 被跳过\n", fileName, sheetName)
 			} else {
 				if cfg.Client.OutputFileType == config.OutputFileType_Json {
-					err = OutputJson(cfg.Client.OutputPath+"/"+define.OutFileName, clientStr+"\n")
+					err = OutputJson(cfg.Client.OutputPath+"/"+define.OutFileName, clientData)
 					if err != nil {
 						fmt.Println(err)
 						return
@@ -130,10 +127,13 @@ func main() {
 	fmt.Printf("总耗时%s\n", elapsed)
 }
 
-func OutputJson(fileName, str string) error {
-	var out bytes.Buffer
-	json.Indent(&out, []byte(str), "", "    ")
-	err := ioutil.WriteFile(fileName+".json", out.Bytes(), 0644)
+func OutputJson(fileName string, data map[string]interface{}) error {
+	jsonData, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		return err
+	}
+	jsonData = append(jsonData, '\n')
+	err = ioutil.WriteFile(fileName+".json", jsonData, 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件%s失败: %w", fileName, err)
 	}
