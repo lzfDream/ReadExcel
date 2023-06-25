@@ -189,6 +189,7 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 		for i := 1; i < len(rows[2]); i++ {
 			field := ExcelDefineField{}
 			field.Name = rows[2][i]
+			field.Name = CaseToCamel(field.Name)
 			if i >= len(rows[3]) {
 				return fmt.Errorf("%s, rows line 3 size < line 2 size", e.Desc())
 			}
@@ -231,4 +232,10 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 	}
 
 	return nil
+}
+
+func CaseToCamel(name string) string {
+	name = strings.ReplaceAll(name, "_", " ")
+	name = strings.Title(name)
+	return strings.ReplaceAll(name, " ", "")
 }

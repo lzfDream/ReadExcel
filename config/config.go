@@ -10,8 +10,9 @@ const (
 )
 
 type groupConfig struct {
-	OutputPath     string `json:"output_path,omitempty"`
-	OutputFileType string `json:"output_file_type,omitempty"`
+	OutputCSharpPath string `json:"output_csharp_path,omitempty"`
+	OutputPath       string `json:"output_path,omitempty"`
+	OutputFileType   string `json:"output_file_type,omitempty"`
 }
 
 type config struct {

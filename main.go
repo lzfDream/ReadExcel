@@ -3,25 +3,29 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
-	"io/ioutil"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/lzfDream/ReadExcel/config"
 	"github.com/lzfDream/ReadExcel/parse"
 
+	"github.com/sirupsen/logrus"
 	"github.com/xuri/excelize/v2"
 )
 
 func main() {
+	logrus.SetFormatter(&logrus.TextFormatter{
+		ForceColors: true,
+	})
+
 	begin := time.Now()
 	cfg := config.GetConfig()
 
 	entries, err := os.ReadDir(cfg.InputPath)
 	if err != nil {
-		fmt.Println("读取目录失败：", err)
+		logrus.Errorln("读取目录失败：", err)
 		return
 	}
 	defines := make([]parse.ExcelDefine, 0)
@@ -30,7 +34,7 @@ func main() {
 			continue
 		}
 		fileName := entry.Name()
-		fmt.Println("开始读取文件: ", fileName)
+		logrus.Infof("开始读取文件: %s", fileName)
 		startTime := time.Now()
 
 		f, err := excelize.OpenFile(cfg.InputPath + "/" + fileName)
@@ -40,7 +44,7 @@ func main() {
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
-				fmt.Println(err)
+				logrus.Errorln(err)
 				return
 			}
 		}()
@@ -49,14 +53,14 @@ func main() {
 		for _, sheetName := range sheets {
 			rows, err := f.GetRows(sheetName)
 			if err != nil {
-				fmt.Println(err)
+				logrus.Errorln(err)
 				return
 			}
-			fmt.Printf("开始解析 %s:%s\n", fileName, sheetName)
+			logrus.Infof("开始解析 %s:%s", fileName, sheetName)
 			define := parse.ExcelDefine{}
 			err = define.Parse(fileName, sheetName, rows)
 			if err != nil {
-				fmt.Println(err)
+				logrus.Errorln(err)
 				return
 			}
 			defines = append(defines, define)
@@ -108,10 +112,10 @@ func main() {
 				}
 			}
 			if len(clientData) == 0 {
-				fmt.Printf("%s:%s client 数据为空, 被跳过\n", fileName, sheetName)
+				logrus.Infof("%s:%s client 数据为空, 被跳过", fileName, sheetName)
 			} else {
 				if cfg.Client.OutputFileType == config.OutputFileType_Json {
-					err = OutputJson(cfg.Client.OutputPath+"/"+define.OutFileName, clientData)
+					err = OutputJson(cfg.Client.OutputPath, define.OutFileName, clientData)
 					if err != nil {
 						fmt.Println(err)
 						return
@@ -120,20 +124,27 @@ func main() {
 			}
 		}
 		elapsed := time.Since(startTime)
-		fmt.Printf("读取%s完成, 耗时%s\n\n", fileName, elapsed)
+		logrus.Infof("读取%s完成, 耗时%s\n\n", fileName, elapsed)
 	}
-	OutputCSharp(defines)
-	elapsed := time.Since(begin)
-	fmt.Printf("总耗时%s\n", elapsed)
+	err = OutputCSharp(cfg.Client.OutputCSharpPath, defines, parse.GroupType_Client)
+	if err != nil {
+		logrus.Errorln(err)
+		return
+	}
+	logrus.Infof("导出成功, 总耗时%s", time.Since(begin))
 }
 
-func OutputJson(fileName string, data map[string]interface{}) error {
+func OutputJson(path, fileName string, data map[string]interface{}) error {
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		return err
+	}
 	jsonData, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
 		return err
 	}
 	jsonData = append(jsonData, '\n')
-	err = ioutil.WriteFile(fileName+".json", jsonData, 0644)
+	err = os.WriteFile(path+"/"+fileName+".json", jsonData, 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件%s失败: %w", fileName, err)
 	}
@@ -153,35 +164,94 @@ func FixCSharpType(strType string) string {
 
 const TableText = `// 生成
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 
-struct {{.ClassName}}
+public class Table{{.ClassName}} : ITableModule
 {
-    {{- range _, $field := .}}
-    public {{$field.Type}} {{$field.Name}};
-    {{- end}}
+    public class Item
+    {
+        {{- range $_, $field := .Fields}}
+        public {{$field.Type}} {{$field.Name}} { get; set; }
+        {{- end}}
+    }
+
+    public Dictionary<string, Item> AllItem;
+
+    public void Load(in string path)
+    {
+        string json = File.ReadAllText(path + "/{{.FileName}}.json");
+        AllItem = JsonSerializer.Deserialize<Dictionary<string, Item>>(json);
+    }
 }
 `
 
-func OutputCSharpCode(path string, define parse.ExcelDefine) error {
-	lines := make([]string, 0, 10)
-	if define.SheetFileType == parse.SheetFileType_Vertical {
-		text, err := template.New("test").Parse(TableText)
-		if err != nil {
-			return nil
-		}
+const TableText2 = `// 生成
+using System;
+using System.IO;
+using System.Text.Json;
 
-		var buf strings.Builder
-		err = text.Execute(&buf, define.Fields)
-		if err != nil {
-			return nil
-		}
-		lines = append(lines, buf.String())
+public class Table{{.ClassName}} : ITableModule
+{
+    public class Item
+    {
+        {{- range $_, $field := .Fields}}
+        public {{$field.Type}} {{$field.Name}} { get; set; }
+        {{- end}}
+    }
+
+    public Item KeyItem;
+
+    public void Load(in string path)
+    {
+        string json = File.ReadAllText(path + "/{{.FileName}}.json");
+        KeyItem = JsonSerializer.Deserialize<Item>(json);
+    }
+}
+`
+
+type TableTemplate struct {
+	FileName  string
+	ClassName string
+	Fields    []parse.ExcelDefineField
+}
+
+func OutputCSharpCode(path string, define parse.ExcelDefine, groupType parse.GroupType) error {
+	className := define.OutFileName
+	className = parse.CaseToCamel(className)
+	begin := time.Now()
+	defer func() {
+		logrus.Infof("输出c#类%s耗时%s", className, time.Since(begin))
+	}()
+
+	tempText := TableText
+	if define.SheetFileType == parse.SheetFileType_Vertical {
+		tempText = TableText2
 	}
-	str := strings.Join(lines, "\n")
-	filePath := path + define.OutFileName + ".cs"
-	err := ioutil.WriteFile(filePath, []byte(str), 0644)
+	str := ""
+	text, err := template.New(className).Parse(tempText)
+	if err != nil {
+		return err
+	}
+	data := TableTemplate{
+		FileName:  define.OutFileName,
+		ClassName: className,
+	}
+	for _, field := range define.Fields {
+		if field.Group.HasGroup(groupType) {
+			data.Fields = append(data.Fields, field)
+		}
+	}
+
+	var buf strings.Builder
+	err = text.Execute(&buf, data)
+	if err != nil {
+		return err
+	}
+	str = buf.String()
+	filePath := path + "/" + define.OutFileName + ".cs"
+	err = os.WriteFile(filePath, []byte(str), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
 	}
@@ -193,65 +263,97 @@ const TableMgrText = `// 生成
 using Table;
 using System.Collections.Generic;
 
-interface ITableModule {
-    void load();
+interface ITableModule
+{
+    void Load(in string path);
 }
 
-public class TableMgr {
+public class TableMgr
+{
     private List<ITableModule> tables;
     private static TableMgr instance;
 
-    private TableMgr() {
-        {{- range $index, $ClassName := .}}
-        tables.Add(new {{$ClassName}}())
+    private TableMgr()
+    {
+        tables = new List<ITableModule>();
+        {{- range $_, $name := .}}
+        tables.Add(new Table{{$name}}());
         {{- end}}
     }
 
-    public static TableMgr Instance() {
-        if (instance == null) {
+    public static TableMgr Instance()
+    {
+        if (instance == null)
+        {
             instance = new TableMgr();
         }
         return instance;
     }
 
-    public void load() {
-        foreach(ITableModule table in tables) {
-            table.load();
+    public void Load(in string path)
+    {
+        foreach(ITableModule table in tables)
+        {
+            table.Load(path);
         }
+    }
+
+    public T GetTable<T>() where T : class
+    {
+        Type type = typeof(T);
+        foreach(ITableModule table in tables)
+        {
+            Type type2 = table.GetType();
+            if (type == type2)
+            {
+                return table as T;
+            }
+        }
+        return default(T);
     }
 }
 `
 
-func OutputCSharp(defines []parse.ExcelDefine) error {
+func OutputCSharp(path string, defines []parse.ExcelDefine, groupType parse.GroupType) error {
+	logrus.Infof("开始输出c#代码定义")
+	begin := time.Now()
+	defer func() {
+		logrus.Infof("输出代码定义耗时%s\n\n", time.Since(begin))
+	}()
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		return err
+	}
 	// 生成每一个sheet的类
+	classNames := []string{}
 	for _, define := range defines {
-		err := OutputCSharpCode("code/", define)
+		err := OutputCSharpCode(path, define, groupType)
 		if err != nil {
 			return err
 		}
+		classNames = append(classNames, parse.CaseToCamel(define.OutFileName))
 	}
 
+	mgrClassName := "TableMgr"
+	begin2 := time.Now()
+	defer func() {
+		logrus.Infof("输出c#管理类%s耗时%s", mgrClassName, time.Since(begin2))
+	}()
 	// 生成全局管理类
-	text, err := template.New("test").Parse(TableMgrText)
+	text, err := template.New(mgrClassName).Parse(TableMgrText)
 	if err != nil {
 		return nil
 	}
 
-	classNames := make([]string, 0)
-	for _, define := range defines {
-		classNames = append(classNames, define.OutFileName)
-	}
 	var buf strings.Builder
 	err = text.Execute(&buf, classNames)
 	if err != nil {
-		return nil
+		return err
 	}
 
-	lines := make([]string, 0)
-	lines = append(lines, buf.String())
-	str := strings.Join(lines, "\n")
-	filePath := "code/TableMgr.cs"
-	err = ioutil.WriteFile(filePath, []byte(str), 0644)
+	str := buf.String()
+	filePath := path + "/" + mgrClassName + ".cs"
+	err = os.WriteFile(filePath, []byte(str), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
 	}

@@ -1,6 +1,7 @@
 {
     "input_path": "./tabby",
     "client": {
+        "output_csharp_path": "./code",
         "output_path": "./data"
     }
 }
