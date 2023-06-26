@@ -3,7 +3,7 @@
 
 ## 编译
 ```bash
-go build
+cd src && go build -o ../example/bin/ReadExcel_linux
 ```
 
 ## 使用
@@ -34,4 +34,4 @@ go build
 
 ## TODO
 1. 解决生成字段因map无序, 与表格中顺序不一样
-1. 生成导入代码
+1. 支持更多类型的数据文件格式和更多使用语言

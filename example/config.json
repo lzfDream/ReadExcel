@@ -1,0 +1,9 @@
+{
+    "input_path": "./tabby",
+    "client": {
+        "output_csharp_path": "./code",
+        "output_path": "./data",
+        "output_data_type": "json",
+        "output_code_type": "c#"
+    }
+}

@@ -3,7 +3,11 @@
     "editor.formatOnSave": true,
     "editor.formatOnSaveMode": "file",
     "cSpell.words": [
+        "Errorln",
         "excelize",
+        "Infof",
+        "logrus",
+        "sirupsen",
         "xuri"
     ]
 }
