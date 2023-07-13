@@ -1,2 +1,4 @@
 #! /bin/bash
-bin/ReadExcel_linux
+
+cd "$(dirname "$0")"
+./bin/ReadExcel_linux

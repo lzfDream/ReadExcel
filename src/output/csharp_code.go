@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lzfDream/ReadExcel/parse"
+	"github.com/lzfDream/ReadExcel/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -118,7 +119,6 @@ func OutputCSharpCode(path string, define parse.ExcelDefine, groupType parse.Gro
 	if define.SheetFileType == parse.SheetFileType_Vertical {
 		tempText = TableText2
 	}
-	str := ""
 	text, err := template.New(className).Funcs(template.FuncMap{
 		"add": func(a, b int) int {
 			return a + b
@@ -145,9 +145,8 @@ func OutputCSharpCode(path string, define parse.ExcelDefine, groupType parse.Gro
 	if err != nil {
 		return err
 	}
-	str = buf.String()
 	filePath := path + "/" + define.OutFileName + ".cs"
-	err = os.WriteFile(filePath, []byte(str), 0644)
+	err = os.WriteFile(filePath, []byte(buf.String()), 0644)
 	if err != nil {
 		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
 	}
@@ -258,5 +257,53 @@ func OutputCSharp(path string, defines []parse.ExcelDefine, groupType parse.Grou
 	if err != nil {
 		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
 	}
+	return nil
+}
+
+const CustomTypeText = `// 由github.com/lzfDream/ReadExcel生成, 请勿修改
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace Table
+{
+    {{- range $_, $classDefine := .}}
+    public class {{$classDefine.Name}}
+    {
+        {{- range $_, $field := $classDefine.Fields}}
+        public {{$field.Type}} {{$field.Name}} { get; set; }
+        {{- end}}
+    }
+    {{- end}}
+}
+`
+
+func OutputCSharpClassDefineFile(fileName string, defineFile []types.ClassDefine) error {
+	logrus.Infof("开始输出c#代码定义")
+	begin := time.Now()
+	defer func() {
+		logrus.Infof("输出代码定义耗时%s\n\n", time.Since(begin))
+	}()
+	err := os.MkdirAll("test/"+fileName, os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	text, err := template.New(fileName).Parse(CustomTypeText)
+	if err != nil {
+		return err
+	}
+
+	var buf strings.Builder
+	err = text.Execute(&buf, defineFile)
+	if err != nil {
+		return err
+	}
+	filePath := fileName + ".cs"
+	err = os.WriteFile(filePath, []byte(buf.String()), 0644)
+	if err != nil {
+		return fmt.Errorf("写入文件%s失败: %w", filePath, err)
+	}
+
 	return nil
 }
