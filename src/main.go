@@ -8,6 +8,7 @@ import (
 	"github.com/lzfDream/ReadExcel/config"
 	"github.com/lzfDream/ReadExcel/output"
 	"github.com/lzfDream/ReadExcel/parse"
+	"github.com/lzfDream/ReadExcel/types"
 
 	"github.com/sirupsen/logrus"
 	"github.com/xuri/excelize/v2"
@@ -26,6 +27,7 @@ func main() {
 		logrus.Errorln("读取目录失败：", err)
 		return
 	}
+	types.LoadFile(cfg.InputPath)
 	defines := make([]parse.ExcelDefine, 0)
 	for _, entry := range entries {
 		if entry.IsDir() {

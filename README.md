@@ -1,13 +1,13 @@
 # ReadExcel
-使用go读取Excel数据并生成对应文件
+使用go读取Excel文件, 导出数据生成对应代码
 
 ## 编译
 ```bash
-cd src && go build -o ../example/bin/ReadExcel_linux
+cd src && go build
 ```
 
 ## 使用
-在可执行文件目录下准备config.json和要导出表格目录, 填好配置执行
+将可执行文件copy至项目下, 配置config.json, 执行导出
 ```json
 {
     "input_path": "./tabby", // 表格目录
@@ -28,6 +28,7 @@ cd src && go build -o ../example/bin/ReadExcel_linux
 1. 第五行字段分组(c/s, 默认全部)
 1. '##'开头 表示注释 任意多行
 1. 出现全空的行则丢弃空行后面的所有行, 除定义和注释行外
+1. 主键外键必须是int和string类型, 需要可比较
 
 ## 数据
 1. 类型可为空时, 空格子为默认值
@@ -35,3 +36,7 @@ cd src && go build -o ../example/bin/ReadExcel_linux
 ## TODO
 1. 解决生成字段因map无序, 与表格中顺序不一样
 1. 支持更多类型的数据文件格式和更多使用语言
+
+读取所有文件 define_开头的纯类型定义直接生成对应的文件
+读取所有文件 读取数据时如果有类型定义一并生成
+保存外键的数据 校验外键依赖

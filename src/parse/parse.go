@@ -1,10 +1,12 @@
 package parse
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/lzfDream/ReadExcel/types"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -76,6 +78,25 @@ func ParseCellValue(fieldDefine ExcelDefineField, cell string) (interface{}, err
 		return num, nil
 	} else if fieldDefine.Type == "string" || fieldDefine.Type == "string?" {
 		return cell, nil
+	} else if classDefine, ok := types.CustomType[fieldDefine.Type]; ok {
+		v := strings.Split(cell, classDefine.Separator)
+		if len(v) != len(classDefine.Fields) {
+			return nil, errors.New("field num !=")
+		}
+		data := make(map[string]interface{})
+		for index, field := range classDefine.Fields {
+			newFieldDefine := ExcelDefineField{
+				field.Name,
+				field.Type,
+				fieldDefine.Group,
+			}
+			v, err := ParseCellValue(newFieldDefine, v[index])
+			if err != nil {
+				return nil, err
+			}
+			data[field.Name] = v
+		}
+		return data, nil
 	}
 	panic(fmt.Errorf("invalid field type %s", fieldDefine.Type))
 }
@@ -119,22 +140,6 @@ type ExcelDefine struct {
 
 func (e ExcelDefine) Desc() string {
 	return e.FileName + ":" + e.SheetName
-}
-
-var ValidType = map[string]struct{}{
-	"bool":   {},
-	"int":    {},
-	"double": {},
-	"string": {},
-}
-
-func init() {
-	newValidType := make(map[string]struct{}, 2*len(ValidType))
-	for strType := range ValidType {
-		newValidType[strType] = struct{}{}
-		newValidType[strType+"?"] = struct{}{}
-	}
-	ValidType = newValidType
 }
 
 func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
@@ -228,7 +233,7 @@ func (e *ExcelDefine) Parse(fileName, sheetName string, rows [][]string) error {
 		if field.Type == "" {
 			return fmt.Errorf("%s, field %d type is empty", e.Desc(), index)
 		}
-		if _, ok := ValidType[field.Type]; !ok {
+		if !types.IsValid(field.Type) {
 			return fmt.Errorf("%s, field %d invalid type", e.Desc(), index)
 		}
 	}
